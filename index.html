@@ -146,6 +146,17 @@
                     </div>
                 </div>
 
+                <!-- Metadata Viewer -->
+                <div id="metadata-viewer"
+                    class="hidden bg-slate-800/80 dark:bg-black/80 backdrop-blur text-white px-6 py-4 sm:px-10">
+                    <div class="flex items-center justify-between mb-2">
+                        <span class="text-xs font-bold text-slate-400 uppercase tracking-wider">📊 Book Metadata</span>
+                        <button id="btn-toggle-metadata" class="text-xs text-indigo-400 hover:underline">Hide</button>
+                    </div>
+                    <div id="metadata-content" class="grid grid-cols-2 sm:grid-cols-4 gap-3 text-xs">
+                    </div>
+                </div>
+
                 <div class="p-6 sm:p-10 bg-slate-50 dark:bg-slate-800/50">
                     <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
 
@@ -218,9 +229,38 @@
                                         (strip images, fonts, CSS)</span>
                                 </label>
 
+                                <!-- CSS Theme Injection -->
+                                <div class="mb-4">
+                                    <label
+                                        class="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">Reading
+                                        Theme</label>
+                                    <select id="css-theme-inject"
+                                        class="w-full bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg px-3 py-2 text-sm text-slate-700 dark:text-slate-300 focus:outline-none focus:ring-2 focus:ring-indigo-500">
+                                        <option value="none">None (keep original)</option>
+                                        <option value="dark">Dark Mode Reading</option>
+                                        <option value="sepia">Sepia / Warm</option>
+                                        <option value="large">Large Text</option>
+                                    </select>
+                                </div>
+
+                                <!-- Export Presets -->
+                                <div class="flex gap-2 mb-4">
+                                    <select id="export-presets"
+                                        class="flex-1 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg px-3 py-2 text-xs text-slate-700 dark:text-slate-300 focus:outline-none">
+                                        <option value="">Load Preset...</option>
+                                    </select>
+                                    <button id="btn-save-preset"
+                                        class="px-3 py-2 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold rounded-lg">Save</button>
+                                </div>
+
                                 <button id="btn-export-chunks"
                                     class="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-3.5 rounded-xl transition-colors shadow-sm disabled:opacity-50">Download
                                     All Parts</button>
+
+                                <!-- Export as ZIP -->
+                                <button id="btn-export-zip"
+                                    class="mt-2 w-full bg-slate-600 hover:bg-slate-700 text-white font-bold py-2.5 rounded-xl transition-colors shadow-sm text-sm disabled:opacity-50">📦
+                                    Export as Plain ZIP</button>
                             </div>
                         </div>
 
@@ -262,10 +302,17 @@
                                         selected</span>
                                 </div>
 
-                                <button id="btn-export-custom"
-                                    class="mb-4 w-full bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-3.5 rounded-xl transition-colors shadow-sm disabled:opacity-50">
-                                    Download Checked Chapters
-                                </button>
+                                <div class="flex gap-2 mb-4">
+                                    <button id="btn-export-custom"
+                                        class="flex-1 bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-3.5 rounded-xl transition-colors shadow-sm disabled:opacity-50">
+                                        Download Checked
+                                    </button>
+                                    <button id="btn-share-export"
+                                        class="px-4 bg-slate-600 hover:bg-slate-700 text-white font-bold py-3.5 rounded-xl transition-colors shadow-sm disabled:opacity-50"
+                                        title="Share via Web Share API">
+                                        📤
+                                    </button>
+                                </div>
 
                                 <!-- Estimated output size -->
                                 <div id="estimated-size"
@@ -476,6 +523,24 @@
 
     </div>
 
+    <!-- Chapter Preview Modal -->
+    <div id="chapter-preview-modal"
+        class="hidden fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4"
+        onclick="if(event.target===this)this.classList.add('hidden')">
+        <div
+            class="bg-white dark:bg-slate-800 rounded-2xl shadow-2xl border border-slate-200 dark:border-slate-700 max-w-2xl w-full max-h-[80vh] flex flex-col overflow-hidden">
+            <div class="flex items-center justify-between p-4 border-b border-slate-200 dark:border-slate-700">
+                <h3 id="preview-modal-title" class="font-bold text-slate-800 dark:text-white truncate">Chapter Preview
+                </h3>
+                <button onclick="document.getElementById('chapter-preview-modal').classList.add('hidden')"
+                    class="w-8 h-8 flex items-center justify-center text-slate-500 hover:text-red-500 text-lg font-bold">✕</button>
+            </div>
+            <div id="preview-modal-body"
+                class="p-6 overflow-y-auto custom-scrollbar text-sm text-slate-700 dark:text-slate-300 leading-relaxed font-serif">
+            </div>
+        </div>
+    </div>
+
     <!-- Export History Panel -->
     <div class="max-w-6xl mx-auto mt-6">
         <details id="export-history-panel"
@@ -510,6 +575,8 @@
         <div><kbd class="px-1.5 py-0.5 bg-slate-700 rounded text-[10px]">Ctrl+A</kbd> Select All Chapters</div>
         <div><kbd class="px-1.5 py-0.5 bg-slate-700 rounded text-[10px]">Ctrl+D</kbd> Deselect All Chapters</div>
         <div><kbd class="px-1.5 py-0.5 bg-slate-700 rounded text-[10px]">Ctrl+S</kbd> Trigger Active Export</div>
+        <div><kbd class="px-1.5 py-0.5 bg-slate-700 rounded text-[10px]">Ctrl+Z</kbd> Undo Selection</div>
+        <div><kbd class="px-1.5 py-0.5 bg-slate-700 rounded text-[10px]">Ctrl+Y</kbd> Redo Selection</div>
         <div><kbd class="px-1.5 py-0.5 bg-slate-700 rounded text-[10px]">?</kbd> Toggle This Help</div>
     </div>
 

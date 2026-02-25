@@ -139,7 +139,8 @@ async function processSplitFile(file) {
             if (!item) return;
 
             const textCheck = (item.href + idref).toLowerCase();
-            const isFrontMatter = /cover|title|copyright|dedication|acknowledgment|toc|nav|preface|foreword|introduction|prologue|epigraph/.test(textCheck);
+            // Smarter front matter detection with configurable patterns
+            const isFrontMatter = /cover|title[-_]?page|copyright|dedication|acknowledgment|toc|nav[-_]?doc|preface|foreword|front[-_]?matter|half[-_]?title|series[-_]?page|about[-_]?author|epigraph|also[-_]?by/.test(textCheck);
 
             if (isFrontMatter) {
                 frontMatter.push({ idref, item, index, originalName: item.href });
@@ -150,20 +151,56 @@ async function processSplitFile(file) {
 
         document.getElementById('chapter-count').textContent = `${storyChapters.length} story chapters detected`;
 
+        // Compute word count + file size for each chapter
+        for (let chap of storyChapters) {
+            const fullPath = splitOpfDir + chap.originalName;
+            const f = splitMasterZip.files[fullPath];
+            chap.fileSize = 0;
+            chap.wordCount = 0;
+            if (f) {
+                if (f._data && f._data.uncompressedSize) chap.fileSize = f._data.uncompressedSize;
+                try {
+                    const txt = await f.async('text');
+                    const stripped = txt.replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim();
+                    chap.wordCount = stripped.split(' ').filter(w => w.length > 0).length;
+                } catch (e) { /* skip */ }
+            }
+        }
+
         const listEl = document.getElementById('chapter-list');
         listEl.innerHTML = '';
         storyChapters.forEach(chap => {
+            const sizeStr = chap.fileSize > 1024 ? `${(chap.fileSize / 1024).toFixed(0)}KB` : `${chap.fileSize}B`;
+            const wcStr = chap.wordCount > 0 ? `${(chap.wordCount / 1000).toFixed(1)}k words` : '';
             const div = document.createElement('div');
-            div.className = "flex items-start gap-3 py-2";
+            div.className = "flex items-start gap-3 py-2 chap-row";
+            div.setAttribute('data-idref', chap.idref);
             div.innerHTML = `
                 <input type="checkbox" id="chk-${chap.idref}" value="${chap.idref}" class="mt-1 w-4 h-4 text-indigo-600 rounded border-slate-300 focus:ring-indigo-500 cursor-pointer chap-checkbox" checked>
                 <label for="chk-${chap.idref}" class="flex-1 cursor-pointer">
                     <span class="font-bold text-slate-700 dark:text-slate-300">#${chap.displayIndex}</span>
-                    <span class="chap-name text-slate-500 dark:text-slate-400 ml-1 break-all whitespace-normal" data-idref="${chap.idref}" title="Double-click to rename">${chap.customName || chap.originalName}</span>
+                    <span class="chap-name text-slate-500 dark:text-slate-400 ml-1 break-all whitespace-normal" data-idref="${chap.idref}" title="Double-click to rename, click to preview">${chap.customName || chap.originalName}</span>
+                    <span class="text-[10px] text-slate-400 ml-1">${sizeStr}${wcStr ? ' · ' + wcStr : ''}</span>
                 </label>
             `;
-            // Double-click to rename chapter
+            // Click chapter name to preview
             const nameSpan = div.querySelector('.chap-name');
+            nameSpan.addEventListener('click', async (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                const fullPath = splitOpfDir + chap.originalName;
+                const f = splitMasterZip.files[fullPath];
+                if (!f) return;
+                try {
+                    const html = await f.async('text');
+                    const stripped = html.replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim();
+                    const preview = stripped.substring(0, 2000) + (stripped.length > 2000 ? '...' : '');
+                    document.getElementById('preview-modal-title').textContent = `#${chap.displayIndex} — ${chap.customName || chap.originalName}`;
+                    document.getElementById('preview-modal-body').textContent = preview;
+                    document.getElementById('chapter-preview-modal').classList.remove('hidden');
+                } catch (err) { showToast('Cannot preview', 'error'); }
+            });
+            // Double-click to rename chapter
             nameSpan.addEventListener('dblclick', (e) => {
                 e.preventDefault();
                 e.stopPropagation();
@@ -180,23 +217,9 @@ async function processSplitFile(file) {
                     const newSpan = document.createElement('span');
                     newSpan.className = 'chap-name text-slate-500 dark:text-slate-400 ml-1 break-all whitespace-normal';
                     newSpan.setAttribute('data-idref', chap.idref);
-                    newSpan.setAttribute('title', 'Double-click to rename');
+                    newSpan.setAttribute('title', 'Double-click to rename, click to preview');
                     newSpan.textContent = chap.customName || chap.originalName;
                     input.replaceWith(newSpan);
-                    // Re-attach dblclick
-                    newSpan.addEventListener('dblclick', nameSpan._dblclickHandler);
-                };
-                nameSpan._dblclickHandler = (e2) => {
-                    e2.preventDefault();
-                    e2.stopPropagation();
-                    const inp2 = document.createElement('input');
-                    inp2.type = 'text';
-                    inp2.value = chap.customName || chap.originalName;
-                    inp2.className = input.className;
-                    e2.target.replaceWith(inp2);
-                    inp2.focus(); inp2.select();
-                    inp2.addEventListener('blur', finishRename);
-                    inp2.addEventListener('keydown', (ev) => { if (ev.key === 'Enter') inp2.blur(); if (ev.key === 'Escape') { inp2.value = chap.customName || chap.originalName; inp2.blur(); } });
                 };
                 input.addEventListener('blur', finishRename);
                 input.addEventListener('keydown', (ev) => {
@@ -212,6 +235,29 @@ async function processSplitFile(file) {
         };
         document.querySelectorAll('.chap-checkbox').forEach(cb => cb.addEventListener('change', updateCount));
         updateCount();
+
+        // Populate metadata viewer
+        try {
+            const mc = document.getElementById('metadata-content');
+            const mv = document.getElementById('metadata-viewer');
+            if (mc && mv) {
+                const getTag = (tag) => { const el = splitOpfDoc.getElementsByTagName(tag)[0]; return el ? el.textContent : '—'; };
+                const descEl = splitOpfDoc.getElementsByTagName('dc:description')[0];
+                const desc = descEl ? descEl.textContent.substring(0, 200) : '—';
+                mc.innerHTML = `
+                    <div><span class="text-slate-500">Author:</span> <span class="font-medium text-white">${getTag('dc:creator')}</span></div>
+                    <div><span class="text-slate-500">Publisher:</span> <span class="font-medium text-white">${getTag('dc:publisher')}</span></div>
+                    <div><span class="text-slate-500">Language:</span> <span class="font-medium text-white">${getTag('dc:language')}</span></div>
+                    <div><span class="text-slate-500">Date:</span> <span class="font-medium text-white">${getTag('dc:date')}</span></div>
+                    <div class="col-span-2 sm:col-span-4"><span class="text-slate-500">Description:</span> <span class="font-medium text-white">${desc}</span></div>
+                `;
+                mv.classList.remove('hidden');
+            }
+        } catch (e) { /* no metadata */ }
+
+        document.getElementById('btn-toggle-metadata')?.addEventListener('click', () => {
+            document.getElementById('metadata-viewer').classList.toggle('hidden');
+        });
 
         logMsg("EPUB Loaded and parsed successfully.");
         logMsg(`File size: ${fileSizeMB}MB | ${storyChapters.length} chapters`);
@@ -342,6 +388,41 @@ async function executeSplit(selectedIdrefs, rangeSuffix) {
 
         newZip.file(splitOpfPath, new XMLSerializer().serializeToString(newOpfDoc));
 
+        // CSS Theme Injection
+        const cssTheme = document.getElementById('css-theme-inject')?.value;
+        if (cssTheme && cssTheme !== 'none') {
+            const themeCSS = {
+                dark: 'body{background:#1a1a2e!important;color:#e0e0e0!important}a{color:#8ab4f8!important}img{opacity:0.85}',
+                sepia: 'body{background:#f4ecd8!important;color:#5b4636!important;font-family:Georgia,serif!important}a{color:#8b4513!important}',
+                large: 'body{font-size:1.4em!important;line-height:1.8!important}'
+            }[cssTheme];
+            if (themeCSS) {
+                const themeFileName = splitOpfDir + 'epub_studio_theme.css';
+                newZip.file(themeFileName, themeCSS);
+                // Inject link into every XHTML file
+                for (let path in newZip.files) {
+                    if (path.endsWith('.xhtml') || path.endsWith('.html')) {
+                        try {
+                            let content = await newZip.file(path).async('text');
+                            const relPath = 'epub_studio_theme.css';
+                            if (!content.includes('epub_studio_theme.css')) {
+                                content = content.replace('</head>', `<link rel="stylesheet" type="text/css" href="${relPath}"/></head>`);
+                                newZip.file(path, content);
+                            }
+                        } catch (e) { /* skip */ }
+                    }
+                }
+                // Add to manifest
+                const themeItem = newOpfDoc.createElement('item');
+                themeItem.setAttribute('id', 'epub-studio-theme-css');
+                themeItem.setAttribute('href', 'epub_studio_theme.css');
+                themeItem.setAttribute('media-type', 'text/css');
+                manifest.appendChild(themeItem);
+                newZip.file(splitOpfPath, new XMLSerializer().serializeToString(newOpfDoc));
+                logMsg(`Applied ${cssTheme} reading theme.`);
+            }
+        }
+
         logMsg(`Compressing & Zipping...`);
 
         let blob;
@@ -390,6 +471,9 @@ async function executeSplit(selectedIdrefs, rangeSuffix) {
                 };
             });
         }
+
+        // Store for share button
+        lastExportBlob = blob;
 
         const url = URL.createObjectURL(blob);
         const a = document.createElement("a");
@@ -577,7 +661,6 @@ document.getElementById('btn-batch-rename')?.addEventListener('click', () => {
             .replace('{original}', chap.originalName);
     });
 
-    // Update visible chapter names
     document.querySelectorAll('#chapter-list .chap-name').forEach(span => {
         const idref = span.getAttribute('data-idref');
         const chap = storyChapters.find(c => c.idref === idref);
@@ -600,35 +683,187 @@ function updateEstimatedSize() {
     }
 
     let totalBytes = 0;
-
-    // Add baseline (non-HTML assets)
     for (let path in splitMasterZip.files) {
         if (path === "mimetype" || splitMasterZip.files[path].dir) continue;
         if (!path.endsWith('.html') && !path.endsWith('.xhtml')) {
             const f = splitMasterZip.files[path];
             if (f._data && f._data.uncompressedSize) totalBytes += f._data.uncompressedSize;
-            else if (f._data && f._data.compressedSize) totalBytes += f._data.compressedSize;
         }
     }
-
-    // Add selected chapters
     checked.forEach(idref => {
         const chap = storyChapters.find(c => c.idref === idref);
         if (!chap) return;
         const fullPath = splitOpfDir + chap.originalName;
         const f = splitMasterZip.files[fullPath];
         if (f && f._data && f._data.uncompressedSize) totalBytes += f._data.uncompressedSize;
-        else totalBytes += 50 * 1024; // fallback
+        else totalBytes += 50 * 1024;
     });
 
-    const mb = (totalBytes / (1024 * 1024)).toFixed(1);
-    sizeValEl.textContent = mb;
+    sizeValEl.textContent = (totalBytes / (1024 * 1024)).toFixed(1);
     sizeEl.classList.remove('hidden');
 }
 
-// Recalculate size on checkbox change
+document.addEventListener('change', (e) => {
+    if (e.target.classList.contains('chap-checkbox')) updateEstimatedSize();
+});
+
+// --- Export as Plain ZIP ---
+document.getElementById('btn-export-zip')?.addEventListener('click', async () => {
+    if (!splitMasterZip || storyChapters.length === 0) return showToast('No EPUB loaded', 'warn');
+    const checked = Array.from(document.querySelectorAll('.chap-checkbox:checked')).map(cb => cb.value);
+    if (checked.length === 0) return showToast('Select chapters first', 'warn');
+
+    logMsg('Exporting as plain ZIP...');
+    const zip = new JSZip();
+
+    for (const idref of checked) {
+        const chap = storyChapters.find(c => c.idref === idref);
+        if (!chap) continue;
+        const fullPath = splitOpfDir + chap.originalName;
+        const f = splitMasterZip.files[fullPath];
+        if (f) {
+            const name = chap.customName || chap.originalName;
+            zip.file(name.endsWith('.xhtml') || name.endsWith('.html') ? name : name + '.xhtml', await f.async('arraybuffer'));
+        }
+    }
+
+    const blob = await zip.generateAsync({ type: 'blob' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    const title = (splitTitleInput.value.trim() || baseBookTitle);
+    a.download = `${sanitize(title)}_chapters.zip`;
+    a.click();
+    URL.revokeObjectURL(url);
+    showToast('ZIP exported!', 'success');
+    addExportEntry(title + ' (ZIP)', 'split', `${checked.length} chapters`);
+});
+
+// --- Share Button (Web Share API) ---
+let lastExportBlob = null;
+
+document.getElementById('btn-share-export')?.addEventListener('click', async () => {
+    if (!splitMasterZip || storyChapters.length === 0) return showToast('No EPUB loaded', 'warn');
+
+    if (!navigator.canShare) return showToast('Web Share API not supported in this browser', 'warn');
+
+    const checked = Array.from(document.querySelectorAll('.chap-checkbox:checked')).map(cb => cb.value);
+    if (checked.length === 0) return showToast('Select chapters first', 'warn');
+
+    // Trigger a split and share
+    showToast('Generating file for sharing...', 'info');
+    await executeSplit(checked, 'Custom Extract');
+
+    if (lastExportBlob) {
+        const title = (splitTitleInput.value.trim() || baseBookTitle);
+        const file = new File([lastExportBlob], `${sanitize(title)}.epub`, { type: 'application/epub+zip' });
+        try {
+            await navigator.share({ files: [file], title });
+            showToast('Shared!', 'success');
+        } catch (e) {
+            if (e.name !== 'AbortError') showToast('Share failed: ' + e.message, 'error');
+        }
+    }
+});
+
+// --- Export Presets ---
+function loadPresets() {
+    try { return JSON.parse(localStorage.getItem('epub-studio-presets') || '[]'); } catch { return []; }
+}
+
+function savePresets(presets) {
+    localStorage.setItem('epub-studio-presets', JSON.stringify(presets));
+}
+
+function renderPresetDropdown() {
+    const sel = document.getElementById('export-presets');
+    if (!sel) return;
+    const presets = loadPresets();
+    sel.innerHTML = '<option value="">Load Preset...</option>';
+    presets.forEach((p, i) => {
+        sel.innerHTML += `<option value="${i}">${p.name}</option>`;
+    });
+}
+
+document.getElementById('btn-save-preset')?.addEventListener('click', () => {
+    const name = prompt('Preset name:', 'My Preset');
+    if (!name) return;
+    const presets = loadPresets();
+    presets.push({
+        name,
+        chunkSize: document.getElementById('chunk-size')?.value || '100',
+        chunkSizeMb: document.getElementById('chunk-size-mb')?.value || '20',
+        splitMode: document.querySelector('input[name="split-mode"]:checked')?.value || 'chapters',
+        keepOnlyText: document.getElementById('keep-only-text')?.checked || false,
+        cssTheme: document.getElementById('css-theme-inject')?.value || 'none'
+    });
+    savePresets(presets);
+    renderPresetDropdown();
+    showToast(`Preset "${name}" saved!`, 'success');
+});
+
+document.getElementById('export-presets')?.addEventListener('change', (e) => {
+    const idx = parseInt(e.target.value);
+    if (isNaN(idx)) return;
+    const presets = loadPresets();
+    const p = presets[idx];
+    if (!p) return;
+    if (document.getElementById('chunk-size')) document.getElementById('chunk-size').value = p.chunkSize;
+    if (document.getElementById('chunk-size-mb')) document.getElementById('chunk-size-mb').value = p.chunkSizeMb;
+    const radio = document.querySelector(`input[name="split-mode"][value="${p.splitMode}"]`);
+    if (radio) { radio.checked = true; radio.dispatchEvent(new Event('change')); }
+    if (document.getElementById('keep-only-text')) document.getElementById('keep-only-text').checked = p.keepOnlyText;
+    if (document.getElementById('css-theme-inject')) document.getElementById('css-theme-inject').value = p.cssTheme;
+    showToast(`Loaded preset: ${p.name}`, 'info');
+    e.target.value = '';
+});
+
+renderPresetDropdown();
+
+// --- Undo/Redo for Chapter Selection ---
+let selectionHistory = [];
+let selectionFuture = [];
+
+function captureSelectionState() {
+    return Array.from(document.querySelectorAll('.chap-checkbox')).map(cb => ({ id: cb.value, checked: cb.checked }));
+}
+
+function restoreSelectionState(state) {
+    state.forEach(s => {
+        const cb = document.querySelector(`.chap-checkbox[value="${s.id}"]`);
+        if (cb) cb.checked = s.checked;
+    });
+    document.getElementById('preview-count').textContent = `${document.querySelectorAll('.chap-checkbox:checked').length} selected`;
+    updateEstimatedSize();
+}
+
 document.addEventListener('change', (e) => {
     if (e.target.classList.contains('chap-checkbox')) {
-        updateEstimatedSize();
+        selectionHistory.push(captureSelectionState());
+        selectionFuture = [];
+    }
+});
+
+document.addEventListener('keydown', (e) => {
+    if ((e.ctrlKey || e.metaKey) && e.key === 'z' && !e.shiftKey) {
+        const tag = document.activeElement.tagName.toLowerCase();
+        if (tag === 'input' || tag === 'textarea') return;
+        e.preventDefault();
+        if (selectionHistory.length > 1) {
+            selectionFuture.push(selectionHistory.pop());
+            restoreSelectionState(selectionHistory[selectionHistory.length - 1]);
+            showToast('Undo', 'info');
+        }
+    }
+    if ((e.ctrlKey || e.metaKey) && (e.key === 'y' || (e.key === 'z' && e.shiftKey))) {
+        const tag = document.activeElement.tagName.toLowerCase();
+        if (tag === 'input' || tag === 'textarea') return;
+        e.preventDefault();
+        if (selectionFuture.length > 0) {
+            const state = selectionFuture.pop();
+            selectionHistory.push(state);
+            restoreSelectionState(state);
+            showToast('Redo', 'info');
+        }
     }
 });
