@@ -100,6 +100,16 @@
                     file to Split</h3>
                 <p id="upload-desc" class="text-slate-500 dark:text-slate-400 font-medium">Click here or drag and drop
                 </p>
+                <div id="loading-progress-wrapper" class="hidden w-full max-w-xs mx-auto mt-4">
+                    <div class="flex justify-between text-xs mb-1 text-slate-400">
+                        <span id="loading-progress-status">Loading EPUB...</span>
+                        <span id="loading-progress-percent">0%</span>
+                    </div>
+                    <div class="w-full bg-slate-200 dark:bg-slate-700 rounded-full h-1.5 overflow-hidden">
+                        <div id="loading-progress-bar" class="bg-indigo-500 h-1.5 transition-all duration-200 ease-out"
+                            style="width: 0%"></div>
+                    </div>
+                </div>
             </div>
 
             <div id="editor-section" class="hidden">
@@ -199,6 +209,15 @@
                                     <input type="number" id="chunk-size-mb" value="20" min="1"
                                         class="w-full bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl px-4 py-3 text-lg font-bold text-slate-800 dark:text-white focus:outline-none focus:ring-2 focus:ring-emerald-500">
                                 </div>
+
+                                <!-- Keep Only Text Toggle -->
+                                <label class="flex items-center gap-2 cursor-pointer mb-4">
+                                    <input type="checkbox" id="keep-only-text"
+                                        class="w-4 h-4 text-indigo-600 rounded border-slate-300 focus:ring-indigo-500">
+                                    <span class="text-xs font-bold text-slate-500 dark:text-slate-400">Keep Only Text
+                                        (strip images, fonts, CSS)</span>
+                                </label>
+
                                 <button id="btn-export-chunks"
                                     class="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-3.5 rounded-xl transition-colors shadow-sm disabled:opacity-50">Download
                                     All Parts</button>
@@ -248,14 +267,28 @@
                                     Download Checked Chapters
                                 </button>
 
-                                <div class="flex gap-2 mb-3">
+                                <!-- Estimated output size -->
+                                <div id="estimated-size"
+                                    class="hidden mb-3 text-xs font-bold text-slate-400 dark:text-slate-500 text-center">
+                                    Estimated output: <span id="estimated-size-value">0</span> MB
+                                </div>
+
+                                <div class="flex items-center gap-2 mb-3 flex-wrap">
                                     <button id="btn-select-all"
                                         class="text-xs font-bold text-indigo-600 dark:text-indigo-400 hover:underline">Select
                                         All</button>
                                     <span class="text-slate-300 dark:text-slate-600">|</span>
                                     <button id="btn-deselect-all"
                                         class="text-xs font-bold text-slate-500 hover:underline">Deselect All</button>
+                                    <span class="text-slate-300 dark:text-slate-600">|</span>
+                                    <button id="btn-batch-rename"
+                                        class="text-xs font-bold text-emerald-600 dark:text-emerald-400 hover:underline">Batch
+                                        Rename</button>
                                 </div>
+
+                                <!-- Chapter Search -->
+                                <input type="text" id="chapter-search" placeholder="🔍 Search chapters..."
+                                    class="w-full mb-3 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg px-3 py-2 text-sm text-slate-700 dark:text-slate-300 focus:outline-none focus:ring-2 focus:ring-indigo-500 placeholder-slate-400">
 
                                 <div id="chapter-list"
                                     class="flex-1 overflow-y-auto custom-scrollbar text-sm bg-slate-50 dark:bg-slate-900/50 rounded-xl p-2 border border-slate-200 dark:border-slate-700 divide-y divide-slate-200 dark:divide-slate-700/50 font-mono">

@@ -1,5 +1,5 @@
 // Change this version string whenever you update the app's HTML/CSS/JS!
-const CACHE_VERSION = 'v4.3';
+const CACHE_VERSION = 'v4.4';
 const CACHE_NAME = 'epub-studio-cache-' + CACHE_VERSION;
 
 const urlsToCache = [

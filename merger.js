@@ -64,6 +64,13 @@ function handleMergeFiles(files) {
     const validFiles = files.filter(f => f.name.endsWith('.epub'));
     if (validFiles.length === 0) return;
 
+    // Duplicate detection
+    const existingNames = new Set(mergeFiles.map(f => f.name));
+    const dupes = validFiles.filter(f => existingNames.has(f.name));
+    if (dupes.length > 0) {
+        showToast(`⚠️ Duplicate${dupes.length > 1 ? 's' : ''} detected: ${dupes.map(f => f.name).join(', ')}`, 'warn');
+    }
+
     mergeFiles = mergeFiles.concat(validFiles);
     mergeUploadBox.classList.add('hidden');
     mergeListContainer.classList.remove('hidden');

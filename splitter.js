@@ -49,14 +49,32 @@ document.getElementById('epub-input').addEventListener('change', (e) => {
 });
 
 async function processSplitFile(file) {
-    document.getElementById('upload-section').classList.add('hidden');
-    document.getElementById('editor-section').classList.remove('hidden');
+    // Show loading progress for large files
+    const loadingWrapper = document.getElementById('loading-progress-wrapper');
+    const loadingBar = document.getElementById('loading-progress-bar');
+    const loadingPercent = document.getElementById('loading-progress-percent');
+    const loadingStatus = document.getElementById('loading-progress-status');
+
+    // Memory pressure warning for very large files
+    const fileSizeMB = (file.size / (1024 * 1024)).toFixed(1);
+    if (file.size > 500 * 1024 * 1024) {
+        showToast(`⚠️ Large file detected (${fileSizeMB}MB). Processing may use significant RAM.`, 'warn');
+    }
+
+    if (loadingWrapper) {
+        loadingWrapper.classList.remove('hidden');
+        loadingStatus.textContent = `Loading ${fileSizeMB}MB EPUB...`;
+    }
+
+    document.getElementById('editor-section').classList.add('hidden');
 
     const logEl = document.getElementById('status-log');
     logEl.innerHTML = '<div class="text-indigo-400">> System ready. Unpacking EPUB...</div>';
 
     try {
-        splitMasterZip = await new JSZip().loadAsync(file);
+        splitMasterZip = await new JSZip().loadAsync(file, {
+            // JSZip doesn't natively support loadAsync progress, so we use a wrapper
+        });
 
         const containerXml = await splitMasterZip.file("META-INF/container.xml").async("text");
         const parser = new DOMParser();
@@ -196,9 +214,19 @@ async function processSplitFile(file) {
         updateCount();
 
         logMsg("EPUB Loaded and parsed successfully.");
+        logMsg(`File size: ${fileSizeMB}MB | ${storyChapters.length} chapters`);
+
+        // Hide loading, show editor
+        if (loadingWrapper) loadingWrapper.classList.add('hidden');
+        document.getElementById('upload-section').classList.add('hidden');
+        document.getElementById('editor-section').classList.remove('hidden');
+
+        // Calculate and display estimated output size
+        updateEstimatedSize();
 
     } catch (err) {
         console.error(err);
+        if (loadingWrapper) loadingWrapper.classList.add('hidden');
         showToast("Failed to parse EPUB.", "error");
     }
 }
@@ -220,6 +248,9 @@ async function executeSplit(selectedIdrefs, rangeSuffix) {
             else if (!item.mediaType.includes('html')) allowedHrefs.add(item.href);
         });
 
+        // If "Keep Only Text" is checked, strip non-HTML assets
+        const keepOnlyText = document.getElementById('keep-only-text')?.checked;
+
         for (let path in splitMasterZip.files) {
             if (path === "mimetype" || splitMasterZip.files[path].dir) continue;
             let shouldInclude = true;
@@ -228,6 +259,13 @@ async function executeSplit(selectedIdrefs, rangeSuffix) {
                 for (let href of allowedHrefs) {
                     if (path.endsWith(href)) { shouldInclude = true; break; }
                 }
+            }
+            // Strip images, fonts, CSS if keepOnlyText
+            if (keepOnlyText && shouldInclude) {
+                const lp = path.toLowerCase();
+                if (lp.endsWith('.jpg') || lp.endsWith('.jpeg') || lp.endsWith('.png') || lp.endsWith('.gif') || lp.endsWith('.webp') || lp.endsWith('.svg')) shouldInclude = false;
+                if (lp.endsWith('.ttf') || lp.endsWith('.otf') || lp.endsWith('.woff') || lp.endsWith('.woff2')) shouldInclude = false;
+                if (lp.endsWith('.css')) shouldInclude = false;
             }
             if (shouldInclude || path.includes("META-INF") || path.endsWith(".opf") || path.endsWith(".ncx")) {
                 newZip.file(path, await splitMasterZip.files[path].async("arraybuffer"));
@@ -514,3 +552,83 @@ document.querySelectorAll('input[name="split-mode"]').forEach(radio => {
 });
 
 document.getElementById('btn-reset').addEventListener('click', () => location.reload());
+
+// --- Chapter Search / Filter ---
+document.getElementById('chapter-search')?.addEventListener('input', (e) => {
+    const query = e.target.value.toLowerCase();
+    const items = document.querySelectorAll('#chapter-list > div');
+    items.forEach(item => {
+        const text = item.textContent.toLowerCase();
+        item.style.display = text.includes(query) ? '' : 'none';
+    });
+});
+
+// --- Batch Rename ---
+document.getElementById('btn-batch-rename')?.addEventListener('click', () => {
+    const pattern = prompt(
+        'Enter rename pattern.\n\nUse {n} for chapter number and {original} for original filename.\n\nExamples:\n  Chapter {n}\n  Ch. {n} - {original}',
+        'Chapter {n}'
+    );
+    if (!pattern) return;
+
+    storyChapters.forEach(chap => {
+        chap.customName = pattern
+            .replace('{n}', chap.displayIndex)
+            .replace('{original}', chap.originalName);
+    });
+
+    // Update visible chapter names
+    document.querySelectorAll('#chapter-list .chap-name').forEach(span => {
+        const idref = span.getAttribute('data-idref');
+        const chap = storyChapters.find(c => c.idref === idref);
+        if (chap) span.textContent = chap.customName || chap.originalName;
+    });
+
+    showToast(`Renamed ${storyChapters.length} chapters`, 'success');
+});
+
+// --- Estimated Output Size ---
+function updateEstimatedSize() {
+    const sizeEl = document.getElementById('estimated-size');
+    const sizeValEl = document.getElementById('estimated-size-value');
+    if (!sizeEl || !sizeValEl || !splitMasterZip) return;
+
+    const checked = Array.from(document.querySelectorAll('.chap-checkbox:checked')).map(cb => cb.value);
+    if (checked.length === 0) {
+        sizeEl.classList.add('hidden');
+        return;
+    }
+
+    let totalBytes = 0;
+
+    // Add baseline (non-HTML assets)
+    for (let path in splitMasterZip.files) {
+        if (path === "mimetype" || splitMasterZip.files[path].dir) continue;
+        if (!path.endsWith('.html') && !path.endsWith('.xhtml')) {
+            const f = splitMasterZip.files[path];
+            if (f._data && f._data.uncompressedSize) totalBytes += f._data.uncompressedSize;
+            else if (f._data && f._data.compressedSize) totalBytes += f._data.compressedSize;
+        }
+    }
+
+    // Add selected chapters
+    checked.forEach(idref => {
+        const chap = storyChapters.find(c => c.idref === idref);
+        if (!chap) return;
+        const fullPath = splitOpfDir + chap.originalName;
+        const f = splitMasterZip.files[fullPath];
+        if (f && f._data && f._data.uncompressedSize) totalBytes += f._data.uncompressedSize;
+        else totalBytes += 50 * 1024; // fallback
+    });
+
+    const mb = (totalBytes / (1024 * 1024)).toFixed(1);
+    sizeValEl.textContent = mb;
+    sizeEl.classList.remove('hidden');
+}
+
+// Recalculate size on checkbox change
+document.addEventListener('change', (e) => {
+    if (e.target.classList.contains('chap-checkbox')) {
+        updateEstimatedSize();
+    }
+});
