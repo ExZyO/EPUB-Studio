@@ -18,8 +18,10 @@ self.onmessage = async function (e) {
             zip.file(path, data);
         }
 
+        const compressType = e.data.compression || "DEFLATE";
+
         const blob = await zip.generateAsync(
-            { type: "blob", compression: "DEFLATE", mimeType: "application/epub+zip" },
+            { type: "blob", compression: compressType, mimeType: "application/epub+zip" },
             function updateCallback(metadata) {
                 self.postMessage({ id, type: 'progress', percent: metadata.percent });
             }

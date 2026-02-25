@@ -164,11 +164,30 @@
                                 class="bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 p-6 rounded-2xl shadow-sm">
                                 <h3 class="text-lg font-bold text-slate-800 dark:text-white mb-4">2. Split into Parts
                                 </h3>
-                                <div class="mb-4">
+                                
+                                <div class="flex gap-4 mb-4">
+                                    <label class="flex items-center gap-2 cursor-pointer text-sm font-bold text-slate-700 dark:text-slate-300">
+                                        <input type="radio" name="split-mode" value="chapters" class="w-4 h-4 text-indigo-600 focus:ring-indigo-500 border-slate-300" checked>
+                                        By Chapters
+                                    </label>
+                                    <label class="flex items-center gap-2 cursor-pointer text-sm font-bold text-slate-700 dark:text-slate-300">
+                                        <input type="radio" name="split-mode" value="size" class="w-4 h-4 text-indigo-600 focus:ring-indigo-500 border-slate-300">
+                                        By Size
+                                    </label>
+                                </div>
+
+                                <div id="split-mode-chapters-wrapper" class="mb-4">
                                     <label
                                         class="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">Chapters
                                         per book</label>
                                     <input type="number" id="chunk-size" value="100" min="1"
+                                        class="w-full bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl px-4 py-3 text-lg font-bold text-slate-800 dark:text-white focus:outline-none focus:ring-2 focus:ring-emerald-500">
+                                </div>
+
+                                <div id="split-mode-size-wrapper" class="hidden mb-4">
+                                    <label
+                                        class="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">Target Size per book (MB)</label>
+                                    <input type="number" id="chunk-size-mb" value="20" min="1"
                                         class="w-full bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl px-4 py-3 text-lg font-bold text-slate-800 dark:text-white focus:outline-none focus:ring-2 focus:ring-emerald-500">
                                 </div>
                                 <button id="btn-export-chunks"
@@ -341,6 +360,36 @@
                                     </div>
                                 </div>
                             </div>
+
+                            <details class="mb-6 group bg-slate-50 dark:bg-slate-900/50 rounded-xl border border-slate-200 dark:border-slate-700 overflow-hidden">
+                                <summary class="cursor-pointer p-4 font-bold text-slate-700 dark:text-slate-300 flex items-center justify-between select-none">
+                                    <span>Advanced Settings</span>
+                                    <svg class="w-5 h-5 transition-transform group-open:rotate-180" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor">
+                                        <path fill-rule="evenodd" d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z" clip-rule="evenodd" />
+                                    </svg>
+                                </summary>
+                                <div class="p-4 pt-0 grid grid-cols-1 sm:grid-cols-2 gap-4 border-t border-slate-200 dark:border-slate-700">
+                                    <div>
+                                        <label class="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">Author / Creator</label>
+                                        <input type="text" id="merge-author" class="w-full bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg px-3 py-2 text-sm font-medium text-slate-800 dark:text-white focus:outline-none focus:ring-2 focus:ring-fuchsia-500">
+                                    </div>
+                                    <div>
+                                        <label class="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">Publisher</label>
+                                        <input type="text" id="merge-publisher" class="w-full bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg px-3 py-2 text-sm font-medium text-slate-800 dark:text-white focus:outline-none focus:ring-2 focus:ring-fuchsia-500">
+                                    </div>
+                                    <div>
+                                        <label class="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">Language</label>
+                                        <input type="text" id="merge-language" value="en" class="w-full bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg px-3 py-2 text-sm font-medium text-slate-800 dark:text-white focus:outline-none focus:ring-2 focus:ring-fuchsia-500">
+                                    </div>
+                                    <div>
+                                        <label class="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">Compression</label>
+                                        <select id="merge-compression" class="w-full bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg px-3 py-2 text-sm font-medium text-slate-800 dark:text-white focus:outline-none focus:ring-2 focus:ring-fuchsia-500 h-[38px]">
+                                            <option value="DEFLATE">Small File (DEFLATE max)</option>
+                                            <option value="STORE">Fast Speed (STORE uncompressed)</option>
+                                        </select>
+                                    </div>
+                                </div>
+                            </details>
 
                             <button id="btn-execute-merge"
                                 class="w-full bg-fuchsia-600 hover:bg-fuchsia-700 text-white font-bold py-3.5 rounded-xl transition-colors shadow-sm disabled:opacity-50 flex items-center justify-center gap-2">

@@ -3,13 +3,32 @@ const themeToggleBtn = document.getElementById('theme-toggle');
 const iconSun = document.getElementById('icon-sun');
 const iconMoon = document.getElementById('icon-moon');
 
-if (localStorage.theme === 'dark' || (!('theme' in localStorage) && window.matchMedia('(prefers-color-scheme: dark)').matches)) {
-    document.documentElement.classList.add('dark');
-    iconMoon.classList.add('hidden');
-    iconSun.classList.remove('hidden');
-} else {
-    document.documentElement.classList.remove('dark');
+function applyTheme(isDark) {
+    if (isDark) {
+        document.documentElement.classList.add('dark');
+        iconMoon.classList.add('hidden');
+        iconSun.classList.remove('hidden');
+    } else {
+        document.documentElement.classList.remove('dark');
+        iconSun.classList.add('hidden');
+        iconMoon.classList.remove('hidden');
+    }
 }
+
+// Initial load check
+if (localStorage.theme === 'dark' || (!('theme' in localStorage) && window.matchMedia('(prefers-color-scheme: dark)').matches)) {
+    applyTheme(true);
+} else {
+    applyTheme(false);
+}
+
+// OS level theme change listener
+window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', e => {
+    // Only update automatically if the user hasn't explicitly set a preference
+    if (!('theme' in localStorage)) {
+        applyTheme(e.matches);
+    }
+});
 
 themeToggleBtn.addEventListener('click', () => {
     document.documentElement.classList.toggle('dark');

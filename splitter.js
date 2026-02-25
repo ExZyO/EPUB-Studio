@@ -358,16 +358,82 @@ document.getElementById('btn-export-range').addEventListener('click', () => {
 });
 
 document.getElementById('btn-export-chunks').addEventListener('click', async () => {
-    const size = parseInt(document.getElementById('chunk-size').value);
-    if (!size || size < 1) return showToast("Invalid chunk size.", "warn");
+    const mode = document.querySelector('input[name="split-mode"]:checked').value;
 
-    for (let i = 0; i < storyChapters.length; i += size) {
-        const chunk = storyChapters.slice(i, i + size);
-        const start = chunk[0].displayIndex;
-        const end = chunk[chunk.length - 1].displayIndex;
-        const selected = chunk.map(c => c.idref);
-        await executeSplit(selected, `${start}-${end}`);
+    if (mode === 'chapters') {
+        const size = parseInt(document.getElementById('chunk-size').value);
+        if (!size || size < 1) return showToast("Invalid chunk size.", "warn");
+
+        for (let i = 0; i < storyChapters.length; i += size) {
+            const chunk = storyChapters.slice(i, i + size);
+            const start = chunk[0].displayIndex;
+            const end = chunk[chunk.length - 1].displayIndex;
+            const selected = chunk.map(c => c.idref);
+            await executeSplit(selected, `${start}-${end}`);
+        }
+    } else {
+        const targetMb = parseFloat(document.getElementById('chunk-size-mb').value);
+        if (!targetMb || targetMb <= 0) return showToast("Invalid target size.", "warn");
+        const targetBytes = targetMb * 1024 * 1024;
+
+        showToast("Estimating split sizes...", "info");
+
+        let baselineSize = 0;
+        // Estimate baseline size (frontmatter + assets)
+        for (let path in splitMasterZip.files) {
+            if (path === "mimetype" || splitMasterZip.files[path].dir) continue;
+            if (!path.endsWith('.html') && !path.endsWith('.xhtml')) {
+                const rawStats = splitMasterZip.files[path]._data; // uncompressed stats
+                if (rawStats && rawStats.uncompressedSize) baselineSize += rawStats.uncompressedSize;
+            }
+        }
+
+        let chunks = [];
+        let currentChunk = [];
+        let currentSize = baselineSize;
+
+        for (let i = 0; i < storyChapters.length; i++) {
+            const chap = storyChapters[i];
+            let chapSize = 0;
+            const fullPath = splitOpfDir + chap.originalName;
+            const fileObj = splitMasterZip.files[fullPath];
+            if (fileObj && fileObj._data && fileObj._data.uncompressedSize) {
+                chapSize = fileObj._data.uncompressedSize;
+            } else {
+                chapSize = 50 * 1024; // fallback 50kb
+            }
+
+            if (currentChunk.length > 0 && (currentSize + chapSize) > targetBytes) {
+                chunks.push(currentChunk);
+                currentChunk = [chap];
+                currentSize = baselineSize + chapSize;
+            } else {
+                currentChunk.push(chap);
+                currentSize += chapSize;
+            }
+        }
+        if (currentChunk.length > 0) chunks.push(currentChunk);
+
+        for (let i = 0; i < chunks.length; i++) {
+            const chunk = chunks[i];
+            const start = chunk[0].displayIndex;
+            const end = chunk[chunk.length - 1].displayIndex;
+            const selected = chunk.map(c => c.idref);
+            await executeSplit(selected, `Part ${i + 1}`);
+        }
     }
+});
+
+document.querySelectorAll('input[name="split-mode"]').forEach(radio => {
+    radio.addEventListener('change', (e) => {
+        if (e.target.value === 'chapters') {
+            document.getElementById('split-mode-chapters-wrapper').classList.remove('hidden');
+            document.getElementById('split-mode-size-wrapper').classList.add('hidden');
+        } else {
+            document.getElementById('split-mode-chapters-wrapper').classList.add('hidden');
+            document.getElementById('split-mode-size-wrapper').classList.remove('hidden');
+        }
+    });
 });
 
 document.getElementById('btn-reset').addEventListener('click', () => location.reload());

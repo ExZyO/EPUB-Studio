@@ -204,7 +204,7 @@ btnExecuteMerge.addEventListener('click', async () => {
         const masterZip = await new JSZip().loadAsync(mergeFiles[0]);
         for (let path in masterZip.files) {
             if (path === "mimetype" || masterZip.files[path].dir) continue;
-            newZip.file(path, await masterZip.files[path].async("arraybuffer"));
+            newZip.file(path, await masterZip.files[path].async("blob"));
         }
 
         const containerXml = await masterZip.file("META-INF/container.xml").async("text");
@@ -215,6 +215,33 @@ btnExecuteMerge.addEventListener('click', async () => {
         const cleanTitle = sanitizeFilename(mergeTitleInput.value || "Merged Book");
         setSmartTitle(masterOpfDoc, cleanTitle);
         forceNewIdentifier(masterOpfDoc);
+
+        // Apply Advanced Metadata
+        const metadataEl = masterOpfDoc.querySelector("metadata");
+        if (metadataEl) {
+            const mAuthor = document.getElementById("merge-author").value.trim();
+            const mPublisher = document.getElementById("merge-publisher").value.trim();
+            const mLanguage = document.getElementById("merge-language").value.trim();
+
+            if (mAuthor) {
+                Array.from(metadataEl.getElementsByTagName("dc:creator")).forEach(el => el.remove());
+                const creatorNode = masterOpfDoc.createElementNS("http://purl.org/dc/elements/1.1/", "dc:creator");
+                creatorNode.textContent = mAuthor;
+                metadataEl.appendChild(creatorNode);
+            }
+            if (mPublisher) {
+                Array.from(metadataEl.getElementsByTagName("dc:publisher")).forEach(el => el.remove());
+                const pubNode = masterOpfDoc.createElementNS("http://purl.org/dc/elements/1.1/", "dc:publisher");
+                pubNode.textContent = mPublisher;
+                metadataEl.appendChild(pubNode);
+            }
+            if (mLanguage) {
+                Array.from(metadataEl.getElementsByTagName("dc:language")).forEach(el => el.remove());
+                const langNode = masterOpfDoc.createElementNS("http://purl.org/dc/elements/1.1/", "dc:language");
+                langNode.textContent = mLanguage;
+                metadataEl.appendChild(langNode);
+            }
+        }
 
         if (customCoverFile) {
             let coverItem = masterOpfDoc.querySelector('item[properties~="cover-image"]') ||
@@ -368,7 +395,7 @@ btnExecuteMerge.addEventListener('click', async () => {
                         });
                         newZip.file(masterOpfDir + newHref, txt);
                     } else {
-                        newZip.file(masterOpfDir + newHref, await subZip.file(fullPath).async("arraybuffer"));
+                        newZip.file(masterOpfDir + newHref, await subZip.file(fullPath).async("blob"));
                     }
                     const ni = masterOpfDoc.createElement("item");
                     ni.setAttribute("id", idMap[it.getAttribute("id")]);
@@ -443,6 +470,7 @@ btnExecuteMerge.addEventListener('click', async () => {
         newZip.file(masterOpfPath, new XMLSerializer().serializeToString(masterOpfDoc));
 
         btnText.textContent = "Compressing Final File...";
+        const compressionLevel = document.getElementById('merge-compression') ? document.getElementById('merge-compression').value : "DEFLATE";
         const pStatus = document.getElementById('merge-progress-status');
         if (pStatus) pStatus.textContent = "Compressing Final File...";
         const pBar = document.getElementById('merge-progress-bar');
@@ -452,7 +480,7 @@ btnExecuteMerge.addEventListener('click', async () => {
         if (window.location.protocol === 'file:') {
             console.log("Local file execution detected. Falling back to main-thread zip generation.");
             b = await newZip.generateAsync(
-                { type: "blob", compression: "DEFLATE", mimeType: "application/epub+zip" },
+                { type: "blob", compression: compressionLevel, mimeType: "application/epub+zip" },
                 function updateCallback(metadata) {
                     const pWrapper = document.getElementById('merge-progress-wrapper');
                     const pBar = document.getElementById('merge-progress-bar');
@@ -467,11 +495,11 @@ btnExecuteMerge.addEventListener('click', async () => {
             const serializedFiles = {};
             for (let path in newZip.files) {
                 if (path === "mimetype" || newZip.files[path].dir) continue;
-                serializedFiles[path] = await newZip.files[path].async("arraybuffer");
+                serializedFiles[path] = await newZip.files[path].async("blob");
             }
 
             const worker = new Worker('zip-worker.js');
-            worker.postMessage({ id: 'merge', filesConfig: serializedFiles });
+            worker.postMessage({ id: 'merge', filesConfig: serializedFiles, compression: compressionLevel });
 
             b = await new Promise((resolve, reject) => {
                 worker.onmessage = (e) => {
