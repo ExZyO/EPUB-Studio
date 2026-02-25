@@ -1,0 +1,106 @@
+// --- Dark Mode Logic ---
+const themeToggleBtn = document.getElementById('theme-toggle');
+const iconSun = document.getElementById('icon-sun');
+const iconMoon = document.getElementById('icon-moon');
+
+if (localStorage.theme === 'dark' || (!('theme' in localStorage) && window.matchMedia('(prefers-color-scheme: dark)').matches)) {
+    document.documentElement.classList.add('dark');
+    iconMoon.classList.add('hidden');
+    iconSun.classList.remove('hidden');
+} else {
+    document.documentElement.classList.remove('dark');
+}
+
+themeToggleBtn.addEventListener('click', () => {
+    document.documentElement.classList.toggle('dark');
+    if (document.documentElement.classList.contains('dark')) {
+        localStorage.theme = 'dark';
+        iconMoon.classList.add('hidden');
+        iconSun.classList.remove('hidden');
+    } else {
+        localStorage.theme = 'light';
+        iconSun.classList.add('hidden');
+        iconMoon.classList.remove('hidden');
+    }
+});
+
+// --- Tab Logic ---
+const tabSplit = document.getElementById('tab-split');
+const tabMerge = document.getElementById('tab-merge');
+const viewSplit = document.getElementById('view-split');
+const viewMerge = document.getElementById('view-merge');
+
+tabSplit.addEventListener('click', () => {
+    tabSplit.className = "flex items-center space-x-2 px-8 py-2.5 rounded-lg font-bold transition-colors bg-indigo-50 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-400";
+    tabMerge.className = "flex items-center space-x-2 px-8 py-2.5 rounded-lg font-bold transition-colors text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-white";
+    viewSplit.classList.remove('hidden');
+    viewMerge.classList.add('hidden');
+});
+
+tabMerge.addEventListener('click', () => {
+    tabMerge.className = "flex items-center space-x-2 px-8 py-2.5 rounded-lg font-bold transition-colors bg-fuchsia-50 dark:bg-fuchsia-900/30 text-fuchsia-700 dark:text-fuchsia-400";
+    tabSplit.className = "flex items-center space-x-2 px-8 py-2.5 rounded-lg font-bold transition-colors text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-white";
+    viewMerge.classList.remove('hidden');
+    viewSplit.classList.add('hidden');
+});
+
+// --- Shared Helpers ---
+function sanitizeFilename(str) {
+    if (!str) return "Book";
+    return str
+        .replace(/[\/\\:*?"<>|]/g, "-")
+        .replace(/[\s\u00A0]+/g, " ")
+        .trim()
+        .replace(/-+/g, "-")
+        .replace(/^-|-$/g, "")
+        .substring(0, 200);
+}
+
+function forceNewIdentifier(opfDoc) {
+    const newUuid = "urn:uuid:" + crypto.randomUUID();
+    const packageEl = opfDoc.querySelector("package");
+    let uniqueIdRef = packageEl ? packageEl.getAttribute("unique-identifier") : null;
+    let idNode = null;
+    if (uniqueIdRef) idNode = opfDoc.querySelector(`dc\\:identifier[id="${uniqueIdRef}"]`);
+    if (!idNode) idNode = opfDoc.querySelector("dc\\:identifier");
+    if (idNode) {
+        idNode.textContent = newUuid;
+    } else {
+        let metadata = opfDoc.querySelector("metadata");
+        if (!metadata) {
+            metadata = opfDoc.createElement("metadata");
+            opfDoc.documentElement.prepend(metadata);
+        }
+        const newId = opfDoc.createElementNS("http://purl.org/dc/elements/1.1/", "dc:identifier");
+        newId.setAttribute("id", "BookID");
+        newId.textContent = newUuid;
+        metadata.appendChild(newId);
+        if (packageEl) packageEl.setAttribute("unique-identifier", "BookID");
+    }
+}
+
+function setSmartTitle(opfDoc, fullTitle) {
+    const titleNode = opfDoc.getElementsByTagName("dc:title")[0];
+    if (titleNode) titleNode.textContent = fullTitle;
+}
+
+function showToast(msg, type = 'info') {
+    const toast = document.createElement('div');
+    const colors = { info: 'bg-slate-800', success: 'bg-emerald-600', error: 'bg-red-600', warn: 'bg-amber-600' };
+    toast.className = `px-6 py-4 rounded-xl text-white text-sm shadow-xl flex items-center gap-3 max-w-sm border border-white/10 ${colors[type]} transform translate-y-10 opacity-0 transition-all duration-300`;
+    toast.innerHTML = `<span>${msg}</span>`;
+    document.getElementById('toast-container').appendChild(toast);
+    requestAnimationFrame(() => toast.classList.remove('translate-y-10', 'opacity-0'));
+    setTimeout(() => {
+        toast.classList.add('translate-y-10', 'opacity-0');
+        setTimeout(() => toast.remove(), 300);
+    }, 4000);
+}
+
+function logMsg(msg) {
+    const log = document.getElementById('status-log');
+    const div = document.createElement('div');
+    div.textContent = `> ${msg}`;
+    log.appendChild(div);
+    log.scrollTop = log.scrollHeight;
+}
