@@ -141,9 +141,51 @@ async function processSplitFile(file) {
                 <input type="checkbox" id="chk-${chap.idref}" value="${chap.idref}" class="mt-1 w-4 h-4 text-indigo-600 rounded border-slate-300 focus:ring-indigo-500 cursor-pointer chap-checkbox" checked>
                 <label for="chk-${chap.idref}" class="flex-1 cursor-pointer">
                     <span class="font-bold text-slate-700 dark:text-slate-300">#${chap.displayIndex}</span>
-                    <span class="text-slate-500 dark:text-slate-400 ml-1 break-all whitespace-normal">${chap.originalName}</span>
+                    <span class="chap-name text-slate-500 dark:text-slate-400 ml-1 break-all whitespace-normal" data-idref="${chap.idref}" title="Double-click to rename">${chap.customName || chap.originalName}</span>
                 </label>
             `;
+            // Double-click to rename chapter
+            const nameSpan = div.querySelector('.chap-name');
+            nameSpan.addEventListener('dblclick', (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                const input = document.createElement('input');
+                input.type = 'text';
+                input.value = chap.customName || chap.originalName;
+                input.className = 'w-full bg-white dark:bg-slate-800 border border-indigo-400 rounded px-2 py-0.5 text-sm font-medium text-slate-800 dark:text-white focus:outline-none focus:ring-1 focus:ring-indigo-500';
+                nameSpan.replaceWith(input);
+                input.focus();
+                input.select();
+                const finishRename = () => {
+                    const newName = input.value.trim();
+                    if (newName) chap.customName = newName;
+                    const newSpan = document.createElement('span');
+                    newSpan.className = 'chap-name text-slate-500 dark:text-slate-400 ml-1 break-all whitespace-normal';
+                    newSpan.setAttribute('data-idref', chap.idref);
+                    newSpan.setAttribute('title', 'Double-click to rename');
+                    newSpan.textContent = chap.customName || chap.originalName;
+                    input.replaceWith(newSpan);
+                    // Re-attach dblclick
+                    newSpan.addEventListener('dblclick', nameSpan._dblclickHandler);
+                };
+                nameSpan._dblclickHandler = (e2) => {
+                    e2.preventDefault();
+                    e2.stopPropagation();
+                    const inp2 = document.createElement('input');
+                    inp2.type = 'text';
+                    inp2.value = chap.customName || chap.originalName;
+                    inp2.className = input.className;
+                    e2.target.replaceWith(inp2);
+                    inp2.focus(); inp2.select();
+                    inp2.addEventListener('blur', finishRename);
+                    inp2.addEventListener('keydown', (ev) => { if (ev.key === 'Enter') inp2.blur(); if (ev.key === 'Escape') { inp2.value = chap.customName || chap.originalName; inp2.blur(); } });
+                };
+                input.addEventListener('blur', finishRename);
+                input.addEventListener('keydown', (ev) => {
+                    if (ev.key === 'Enter') input.blur();
+                    if (ev.key === 'Escape') { input.value = chap.customName || chap.originalName; input.blur(); }
+                });
+            });
             listEl.appendChild(div);
         });
 
@@ -321,6 +363,41 @@ async function executeSplit(selectedIdrefs, rangeSuffix) {
 
         logMsg(`Success.`);
         showToast(`Exported`, "success");
+        addExportEntry(finalDisplayName, 'split', rangeSuffix);
+
+        // Quick EPUB Validation
+        try {
+            logMsg('Running validation...');
+            const valZip = await new JSZip().loadAsync(blob);
+            const valIssues = [];
+            if (!valZip.file('mimetype')) valIssues.push('Missing mimetype file');
+            if (!valZip.file('META-INF/container.xml')) valIssues.push('Missing container.xml');
+            const valContainer = valZip.file('META-INF/container.xml');
+            if (valContainer) {
+                const vcXml = await valContainer.async('text');
+                const vcDoc = new DOMParser().parseFromString(vcXml, 'text/xml');
+                const opfRef = vcDoc.querySelector('rootfile');
+                if (opfRef) {
+                    const opfP = opfRef.getAttribute('full-path');
+                    if (!valZip.file(opfP)) valIssues.push(`Missing OPF: ${opfP}`);
+                    else {
+                        const opfXml = await valZip.file(opfP).async('text');
+                        const opfD = new DOMParser().parseFromString(opfXml, 'text/xml');
+                        const spineRefs = Array.from(opfD.querySelectorAll('spine > itemref')).map(r => r.getAttribute('idref'));
+                        const manifestIds = new Set(Array.from(opfD.querySelectorAll('manifest > item')).map(i => i.getAttribute('id')));
+                        spineRefs.forEach(id => { if (!manifestIds.has(id)) valIssues.push(`Spine ref '${id}' missing from manifest`); });
+                    }
+                }
+            }
+            if (valIssues.length === 0) {
+                logMsg('\u2705 Validation passed. EPUB looks healthy!');
+            } else {
+                valIssues.forEach(issue => logMsg(`\u26a0\ufe0f ${issue}`));
+                showToast(`${valIssues.length} validation warning(s)`, 'warn');
+            }
+        } catch (valErr) {
+            logMsg('Validation skipped: ' + valErr.message);
+        }
     } catch (err) {
         console.error(err);
         showToast("Export failed!", "error");

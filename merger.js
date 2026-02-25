@@ -528,6 +528,7 @@ btnExecuteMerge.addEventListener('click', async () => {
         a.download = `${cleanTitle}.epub`;
         a.click();
         showToast("Books merged!", "success");
+        addExportEntry(cleanTitle, 'merge', `${mergeFiles.length} books`);
 
     } catch (err) {
         console.error(err);

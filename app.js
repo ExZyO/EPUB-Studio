@@ -123,3 +123,97 @@ function logMsg(msg) {
     log.appendChild(div);
     log.scrollTop = log.scrollHeight;
 }
+
+// --- Keyboard Shortcuts ---
+document.addEventListener('keydown', (e) => {
+    // Ignore shortcuts when user is typing in an input/textarea
+    const tag = document.activeElement.tagName.toLowerCase();
+    const isTyping = tag === 'input' || tag === 'textarea' || tag === 'select';
+
+    if (e.key === '?' && !isTyping) {
+        e.preventDefault();
+        document.getElementById('kbd-tooltip').classList.toggle('hidden');
+        return;
+    }
+
+    if (!e.ctrlKey && !e.metaKey) return;
+
+    if (e.key === '1') {
+        e.preventDefault();
+        document.getElementById('tab-split').click();
+    } else if (e.key === '2') {
+        e.preventDefault();
+        document.getElementById('tab-merge').click();
+    } else if (e.key === 'a' && !isTyping) {
+        e.preventDefault();
+        document.getElementById('btn-select-all')?.click();
+    } else if (e.key === 'd' && !isTyping) {
+        e.preventDefault();
+        document.getElementById('btn-deselect-all')?.click();
+    } else if (e.key === 's') {
+        e.preventDefault();
+        // Trigger the primary export action for the current visible view
+        const splitVisible = !document.getElementById('view-split').classList.contains('hidden');
+        if (splitVisible) {
+            document.getElementById('btn-export-custom')?.click();
+        } else {
+            document.getElementById('btn-execute-merge')?.click();
+        }
+    }
+});
+
+// --- Export History ---
+function getExportHistory() {
+    try {
+        return JSON.parse(localStorage.getItem('epub-studio-history') || '[]');
+    } catch { return []; }
+}
+
+function saveExportHistory(history) {
+    localStorage.setItem('epub-studio-history', JSON.stringify(history.slice(0, 50)));
+}
+
+function addExportEntry(title, type, chapterInfo) {
+    const history = getExportHistory();
+    history.unshift({
+        title,
+        type,
+        chapterInfo,
+        timestamp: new Date().toISOString()
+    });
+    saveExportHistory(history);
+    renderExportHistory();
+}
+
+function renderExportHistory() {
+    const container = document.getElementById('export-history-list');
+    if (!container) return;
+    const history = getExportHistory();
+    if (history.length === 0) {
+        container.innerHTML = '<p class="text-slate-400 py-2">No exports yet.</p>';
+        return;
+    }
+    container.innerHTML = history.map(entry => {
+        const date = new Date(entry.timestamp);
+        const dateStr = date.toLocaleDateString() + ' ' + date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+        const badge = entry.type === 'merge'
+            ? '<span class="px-1.5 py-0.5 bg-fuchsia-100 dark:bg-fuchsia-900/40 text-fuchsia-700 dark:text-fuchsia-300 text-[10px] font-bold rounded">MERGE</span>'
+            : '<span class="px-1.5 py-0.5 bg-indigo-100 dark:bg-indigo-900/40 text-indigo-700 dark:text-indigo-300 text-[10px] font-bold rounded">SPLIT</span>';
+        return `<div class="flex items-center justify-between py-2 gap-3">
+            <div class="flex items-center gap-2 min-w-0">
+                ${badge}
+                <span class="font-medium text-slate-700 dark:text-slate-300 truncate">${entry.title}</span>
+            </div>
+            <span class="text-slate-400 text-xs whitespace-nowrap">${dateStr}</span>
+        </div>`;
+    }).join('');
+}
+
+document.getElementById('btn-clear-history')?.addEventListener('click', () => {
+    localStorage.removeItem('epub-studio-history');
+    renderExportHistory();
+    showToast('History cleared', 'info');
+});
+
+// Render history on page load
+renderExportHistory();
